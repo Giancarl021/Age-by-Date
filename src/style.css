@@ -1,0 +1,34 @@
+:root {
+    --clr-bg-dark: hsl(0 0% 0%);
+    --clr-bg: hsl(0 0% 5%);
+    --clr-bg-light: hsl(0 0% 10%);
+    --clr-text: hsl(0 0 95%);
+    --clr-text-muted: hsl(0 0% 70%);
+}
+
+body.light-theme {
+    --clr-bg-dark: hsl(0 0% 90%);
+    --clr-bg: hsl(0 0% 95%);
+    --clr-bg-light: hsl(0 0% 100%);
+    --clr-text: hsl(0 0 5%);
+    --clr-text-muted: hsl(0 0% 30%);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    width: 100%;
+    height: 100vh;
+    height: 100svh;
+    background-color: var(--clr-bg-dark);
+}
+
+header {
+    padding: 20px;
+    background-color: var(--clr-bg);
+    color: var(--clr-text);
+}
