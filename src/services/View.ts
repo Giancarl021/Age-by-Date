@@ -1,25 +1,23 @@
+import { DateTime } from 'luxon';
+
 export type ViewEvent = keyof ViewCallbacks;
 
 interface ViewCallbacks {
-    inputChange: (date: Date) => void;
+    inputChange: (date: DateTime) => void;
     clear: () => void;
 }
 
-interface OnChangeOptions {
-    onInputEmptied?: {
-        callback: () => void;
+export type ViewCallback<Event extends ViewEvent> = ViewCallbacks[Event];
+
+interface Context {
+    callbacks: {
+        [Callback in keyof ViewCallbacks]: ViewCallbacks[Callback][];
     };
-    onInputFilled?: {
-        callback: () => void;
-        length: number;
-    };
-    bounds?: {
-        min?: number;
-        max?: number;
+    input: {
+        elements: HTMLInputElement[];
+        currentIndex: number;
     };
 }
-
-export type ViewCallback<Event extends ViewEvent> = ViewCallbacks[Event];
 
 export default function View() {
     const $ = {
@@ -27,14 +25,28 @@ export default function View() {
             date: document.querySelector('input#date') as HTMLInputElement,
             month: document.querySelector('input#month') as HTMLInputElement,
             year: document.querySelector('input#year') as HTMLInputElement
+        },
+        info: {
+            validationMessage: document.querySelector(
+                'p#validation-message'
+            ) as HTMLParagraphElement
+        },
+        output: {
+            years: document.querySelector('span#years') as HTMLSpanElement,
+            months: document.querySelector('span#months') as HTMLSpanElement,
+            days: document.querySelector('span#days') as HTMLSpanElement
         }
     } as const;
 
-    const callbacks: {
-        [Callback in keyof ViewCallbacks]: ViewCallbacks[Callback][];
-    } = {
-        inputChange: [],
-        clear: []
+    const context: Context = {
+        callbacks: {
+            inputChange: [],
+            clear: []
+        },
+        input: {
+            currentIndex: 0,
+            elements: [$.input.date, $.input.month, $.input.year]
+        }
     };
 
     function _getContent(): [string, string, string] {
@@ -45,15 +57,18 @@ export default function View() {
         ];
     }
 
-    function _onChange(element: HTMLInputElement, options: OnChangeOptions) {
+    function _onChange(
+        element: HTMLInputElement,
+        options: { min: number; max: number }
+    ) {
         let previousValue = element.value;
+        const maxLength = String(options.max).length;
 
         /*
          * TODO:
          * - Add invalid state instead of snap-to-fix
          * - Backspace on next input should erase previous input (keydown)
          * - Delete on previous input should delete next input (keydown)
-         * - Fire input change on any change
          */
 
         element.addEventListener('input', onInput);
@@ -67,6 +82,8 @@ export default function View() {
                 this.value = previousValue;
                 return;
             }
+
+            /*
 
             if (!value && previousValue) {
                 options.onInputEmptied?.callback();
@@ -99,46 +116,90 @@ export default function View() {
                 options.onInputFilled.callback();
             }
 
+            */
+
             previousValue = value;
+
+            const date = getDate();
+
+            if (date) context.callbacks.inputChange.forEach(cb => cb(date));
         }
 
         function onKeyDown(this: HTMLInputElement, event: Event) {
             const value = this.value;
             const _event = event as KeyboardEvent;
 
-            if (!value && _event.key === 'Backspace') {
-                options.onInputEmptied?.callback();
+            /*
+
+            if (!value && ['Backspace', 'LeftArrow'].includes(_event.key)) {
+                const clone = _cloneKeyboardEvent(_event);
+                _event.preventDefault();
+                options.onInputEmptied?.callback(clone);
                 return;
             }
 
-            // FIX!
             if (
-                (!value ||
-                    (options.onInputFilled &&
-                        value.length >= options.onInputFilled.length)) &&
-                _event.key === 'Delete'
+                options.bounds?.max &&
+                value.length === options.bounds?.max &&
+                _event.key.length === 1
             ) {
-                options.onInputFilled?.callback();
                 return;
             }
+
+            */
         }
+    }
+
+    function _updateCurrentIndex(element: HTMLInputElement) {
+        element.focus();
+        context.input.currentIndex = context.input.elements.indexOf(element);
+    }
+
+    function _getCurrentElement(): HTMLInputElement {
+        return context.input.elements[context.input.currentIndex];
+    }
+
+    function _nextElement(): boolean {
+        if (!context.input.elements[context.input.currentIndex + 1])
+            return false;
+
+        context.input.currentIndex++;
+        return true;
+    }
+
+    function _prevElement(): boolean {
+        if (!context.input.elements[context.input.currentIndex - 1])
+            return false;
+
+        context.input.currentIndex--;
+        return true;
+    }
+
+    function _backspaceCurrentElement() {
+        const element = _getCurrentElement();
+        element.value = element.value.slice(0, -1);
+    }
+
+    function _deleteCurrentElement() {
+        const element = _getCurrentElement();
+        element.value = element.value.slice(1);
     }
 
     function _focus() {
         const [date, month, year] = _getContent();
 
         if (!date) {
-            $.input.date.focus();
+            _updateCurrentIndex($.input.date);
             return;
         }
 
         if (!month) {
-            $.input.month.focus();
+            _updateCurrentIndex($.input.month);
             return;
         }
 
         if (!year) {
-            $.input.year.focus();
+            _updateCurrentIndex($.input.year);
             return;
         }
     }
@@ -150,64 +211,25 @@ export default function View() {
 
         _focus();
 
-        callbacks.clear.forEach(cb => cb());
+        context.callbacks.clear.forEach(cb => cb());
     }
 
     function init() {
         window.addEventListener('keydown', _clearEvent);
 
         _onChange($.input.date, {
-            bounds: {
-                min: 1,
-                max: 31
-            },
-            onInputFilled: {
-                length: 2,
-                callback() {
-                    $.input.month.focus();
-                }
-            },
-            onInputEmptied: {
-                callback() {
-                    if (!$.input.month.value && !$.input.year.value) {
-                        clear();
-                    }
-                }
-            }
+            min: 1,
+            max: 31
         });
 
         _onChange($.input.month, {
-            bounds: {
-                min: 1,
-                max: 12
-            },
-            onInputFilled: {
-                length: 2,
-                callback() {
-                    $.input.year.focus();
-                }
-            },
-            onInputEmptied: {
-                callback() {
-                    $.input.date.focus();
-                }
-            }
+            min: 1,
+            max: 12
         });
 
         _onChange($.input.year, {
-            bounds: {
-                min: 1800,
-                max: new Date().getFullYear()
-            },
-            onInputEmptied: {
-                callback() {
-                    $.input.month.focus();
-                }
-            },
-            onInputFilled: {
-                length: 4,
-                callback() {}
-            }
+            min: 1800,
+            max: new Date().getFullYear()
         });
 
         _focus();
@@ -217,15 +239,25 @@ export default function View() {
         }
     }
 
-    function getDate(): Date | null {
-        return null;
+    function getDate(): DateTime | null {
+        const content = _getContent().map(Number);
+
+        if (content.some(n => isNaN(n) || n <= 0)) return null;
+
+        const [day, month, year] = content;
+
+        const date = DateTime.fromObject({ year, month, day });
+
+        if (!date.isValid) return null;
+
+        return date;
     }
 
     function on<Event extends ViewEvent>(
         event: Event,
         callback: ViewCallback<Event>
     ) {
-        callbacks[event].push(callback);
+        context.callbacks[event].push(callback);
     }
 
     return {

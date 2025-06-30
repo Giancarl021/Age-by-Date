@@ -5,7 +5,7 @@ async function main() {
     const view = View();
 
     view.init();
-    view.on('inputChange', console.log);
+    view.on('inputChange', date => console.log(date.toISODate()));
     view.on('clear', () => console.log('VIEW CLEAR'));
 }
 
