@@ -9,6 +9,11 @@ interface ViewCallbacks {
 
 export type ViewCallback<Event extends ViewEvent> = ViewCallbacks[Event];
 
+interface ValidationError {
+    lessThanMininum: boolean;
+    greaterThanMaximum: boolean;
+}
+
 interface Context {
     callbacks: {
         [Callback in keyof ViewCallbacks]: ViewCallbacks[Callback][];
@@ -17,6 +22,7 @@ interface Context {
         elements: HTMLInputElement[];
         currentIndex: number;
     };
+    validationErrors: Record<string, ValidationError>;
 }
 
 export default function View() {
@@ -46,6 +52,20 @@ export default function View() {
         input: {
             currentIndex: 0,
             elements: [$.input.date, $.input.month, $.input.year]
+        },
+        validationErrors: {
+            [$.input.date.id]: {
+                greaterThanMaximum: false,
+                lessThanMininum: false
+            },
+            [$.input.month.id]: {
+                greaterThanMaximum: false,
+                lessThanMininum: false
+            },
+            [$.input.year.id]: {
+                greaterThanMaximum: false,
+                lessThanMininum: false
+            }
         }
     };
 
@@ -67,15 +87,23 @@ export default function View() {
         /*
          * TODO:
          * - Add invalid state instead of snap-to-fix
-         * - Backspace on next input should erase previous input (keydown)
-         * - Delete on previous input should delete next input (keydown)
          */
+
+        element.min = String(options.min);
+        element.max = String(options.max);
+        element.setAttribute('data-max-length', String(maxLength));
 
         element.addEventListener('input', onInput);
         element.addEventListener('keydown', onKeyDown);
+        element.addEventListener('focus', onFocus);
 
-        function onInput(this: typeof element, event: Event) {
+        function onFocus(this: HTMLInputElement) {
+            _updateCurrentIndex(this);
+        }
+
+        function onInput(this: HTMLInputElement, event: Event) {
             const value = this.value;
+            const valueAsNumber = this.valueAsNumber;
             const _event = event as InputEvent;
 
             if (_event.data && /\D/.test(_event.data)) {
@@ -83,71 +111,77 @@ export default function View() {
                 return;
             }
 
-            /*
-
-            if (!value && previousValue) {
-                options.onInputEmptied?.callback();
-            } else if (
+            if (!value && previousValue) _prevElement();
+            else if (
                 value &&
-                options.onInputFilled &&
-                options.onInputFilled.length > 0 &&
-                value.length >= options.onInputFilled.length &&
+                value.length >= maxLength &&
                 /insert/i.test(_event.inputType)
-            ) {
-                if (
-                    options.bounds &&
-                    !(
-                        options.bounds.max &&
-                        options.bounds.min &&
-                        options.bounds.min > options.bounds.max
-                    )
-                ) {
-                    const number = Number(value);
+            )
+                _nextElement();
 
-                    if (options.bounds.min && number < options.bounds.min) {
-                        this.value = String(options.bounds.min);
-                    }
+            context.validationErrors[element.id].lessThanMininum =
+                valueAsNumber < options.min;
 
-                    if (options.bounds.max && number > options.bounds.max) {
-                        this.value = String(options.bounds.max);
-                    }
-                }
-
-                options.onInputFilled.callback();
-            }
-
-            */
+            context.validationErrors[element.id].greaterThanMaximum =
+                valueAsNumber > options.max;
 
             previousValue = value;
 
-            const date = getDate();
-
-            if (date) context.callbacks.inputChange.forEach(cb => cb(date));
+            _updateState();
         }
 
         function onKeyDown(this: HTMLInputElement, event: Event) {
             const value = this.value;
             const _event = event as KeyboardEvent;
 
-            /*
+            const selection = {
+                selecting: this.selectionStart !== this.selectionEnd,
+                atStart: this.selectionStart === 0,
+                atEnd: this.selectionStart === value.length
+            };
 
-            if (!value && ['Backspace', 'LeftArrow'].includes(_event.key)) {
-                const clone = _cloneKeyboardEvent(_event);
+            const toBeValue =
+                value + (_event.key.length === 1 ? _event.key : '');
+
+            if (toBeValue.length > maxLength && !selection.selecting) {
                 _event.preventDefault();
-                options.onInputEmptied?.callback(clone);
+                if (_nextElement()) _insertOnCurrentElement(_event.key);
                 return;
             }
 
-            if (
-                options.bounds?.max &&
-                value.length === options.bounds?.max &&
-                _event.key.length === 1
-            ) {
-                return;
+            switch (_event.key) {
+                case 'LeftArrow':
+                    if (!selection.selecting && selection.atStart) {
+                        _event.preventDefault();
+                        _prevElement();
+                    }
+                    break;
+                case 'RightArrow':
+                    if (!selection.selecting && selection.atEnd) {
+                        _event.preventDefault();
+                        _nextElement();
+                    }
+                    break;
+                case 'Backspace':
+                    if (!selection.selecting && selection.atStart) {
+                        _event.preventDefault();
+                        if (_prevElement()) _backspaceOnCurrentElement();
+                    }
+                    break;
+                case 'Delete':
+                    if (!selection.selecting && selection.atEnd) {
+                        _event.preventDefault();
+                        if (_nextElement()) _deleteOnCurrentElement();
+                    }
+                    break;
             }
-
-            */
         }
+    }
+
+    function _updateState() {
+        const date = getDate();
+
+        if (date) context.callbacks.inputChange.forEach(cb => cb(date));
     }
 
     function _updateCurrentIndex(element: HTMLInputElement) {
@@ -164,6 +198,7 @@ export default function View() {
             return false;
 
         context.input.currentIndex++;
+        _getCurrentElement().focus();
         return true;
     }
 
@@ -172,17 +207,35 @@ export default function View() {
             return false;
 
         context.input.currentIndex--;
+        _getCurrentElement().focus();
         return true;
     }
 
-    function _backspaceCurrentElement() {
+    function _backspaceOnCurrentElement() {
         const element = _getCurrentElement();
         element.value = element.value.slice(0, -1);
     }
 
-    function _deleteCurrentElement() {
+    function _deleteOnCurrentElement() {
         const element = _getCurrentElement();
         element.value = element.value.slice(1);
+    }
+
+    function _insertOnCurrentElement(data: string) {
+        if (data.length > 1) return;
+
+        const element = _getCurrentElement();
+        const maxLength = zeroOrPositive(
+            Number(element.getAttribute('data-max-length') ?? 0)
+        );
+
+        if (element.value.length === maxLength) return;
+
+        element.value += data;
+
+        function zeroOrPositive(n: number) {
+            return n < 0 ? 0 : n;
+        }
     }
 
     function _focus() {
