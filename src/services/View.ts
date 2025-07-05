@@ -22,7 +22,12 @@ interface Context {
         elements: HTMLInputElement[];
         currentIndex: number;
     };
-    validationErrors: Record<string, ValidationError>;
+    validationErrors: {
+        elements: Record<string, ValidationError>;
+        general: boolean;
+    };
+    hasValidationError(): boolean;
+    getValidationErrorMessages(): string[];
 }
 
 export default function View() {
@@ -33,8 +38,8 @@ export default function View() {
             year: document.querySelector('input#year') as HTMLInputElement
         },
         info: {
-            validationMessage: document.querySelector(
-                'p#validation-message'
+            validationErrors: document.querySelector(
+                'ul#validation-errors'
             ) as HTMLParagraphElement
         },
         output: {
@@ -54,18 +59,33 @@ export default function View() {
             elements: [$.input.date, $.input.month, $.input.year]
         },
         validationErrors: {
-            [$.input.date.id]: {
-                greaterThanMaximum: false,
-                lessThanMininum: false
+            elements: {
+                [$.input.date.id]: {
+                    greaterThanMaximum: false,
+                    lessThanMininum: false
+                },
+                [$.input.month.id]: {
+                    greaterThanMaximum: false,
+                    lessThanMininum: false
+                },
+                [$.input.year.id]: {
+                    greaterThanMaximum: false,
+                    lessThanMininum: false
+                }
             },
-            [$.input.month.id]: {
-                greaterThanMaximum: false,
-                lessThanMininum: false
-            },
-            [$.input.year.id]: {
-                greaterThanMaximum: false,
-                lessThanMininum: false
-            }
+            general: false
+        },
+        hasValidationError() {
+            if (this.validationErrors.general) return true;
+
+            for (const element of Object.values(this.validationErrors.elements))
+                if (element.greaterThanMaximum || element.lessThanMininum)
+                    return true;
+
+            return false;
+        },
+        getValidationErrorMessages() {
+            return [];
         }
     };
 
@@ -83,11 +103,6 @@ export default function View() {
     ) {
         let previousValue = element.value;
         const maxLength = String(options.max).length;
-
-        /*
-         * TODO:
-         * - Add invalid state instead of snap-to-fix
-         */
 
         element.min = String(options.min);
         element.max = String(options.max);
@@ -119,10 +134,10 @@ export default function View() {
             )
                 _nextElement();
 
-            context.validationErrors[element.id].lessThanMininum =
+            context.validationErrors.elements[element.id].lessThanMininum =
                 valueAsNumber < options.min;
 
-            context.validationErrors[element.id].greaterThanMaximum =
+            context.validationErrors.elements[element.id].greaterThanMaximum =
                 valueAsNumber > options.max;
 
             previousValue = value;
@@ -181,7 +196,23 @@ export default function View() {
     function _updateState() {
         const date = getDate();
 
-        if (date) context.callbacks.inputChange.forEach(cb => cb(date));
+        if (date) {
+            context.callbacks.inputChange.forEach(cb => cb(date));
+            $.info.validationErrors.classList.add('hidden');
+        } else if (context.hasValidationError()) {
+            const messages = context.getValidationErrorMessages();
+
+            const htmlParts: string[] = [];
+
+            for (const message of messages) {
+                htmlParts.push(`<li>${message}</li>`);
+            }
+
+            $.info.validationErrors.innerHTML = htmlParts.join('');
+            $.info.validationErrors.classList.remove('hidden');
+        } else {
+            $.info.validationErrors.classList.add('hidden');
+        }
     }
 
     function _updateCurrentIndex(element: HTMLInputElement) {
@@ -300,6 +331,8 @@ export default function View() {
         const [day, month, year] = content;
 
         const date = DateTime.fromObject({ year, month, day });
+
+        context.validationErrors.general = !date.isValid;
 
         if (!date.isValid) return null;
 
