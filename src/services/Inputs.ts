@@ -39,11 +39,6 @@ export default function Inputs() {
             validationErrors: document.querySelector(
                 'ul#validation-errors'
             ) as HTMLParagraphElement
-        },
-        output: {
-            years: document.querySelector('span#years') as HTMLSpanElement,
-            months: document.querySelector('span#months') as HTMLSpanElement,
-            days: document.querySelector('span#days') as HTMLSpanElement
         }
     } as const;
 

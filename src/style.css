@@ -38,3 +38,15 @@ header {
     opacity: 0;
     pointer-events: none;
 }
+
+#output span#years::after {
+    content: ' anos';
+}
+
+#output span#months::after {
+    content: ' meses';
+}
+
+#output span#days::after {
+    content: ' dias';
+}

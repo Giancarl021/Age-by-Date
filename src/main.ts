@@ -1,12 +1,15 @@
 import Inputs from './services/Inputs';
+import Outputs from './services/Outputs';
+
 import './style.css';
 
 async function main() {
     const inputs = Inputs();
+    const outputs = Outputs();
 
     inputs.init();
-    inputs.on('inputChange', date => console.log(date.toISODate()));
-    inputs.on('clear', () => console.log('VIEW CLEAR'));
+    inputs.on('inputChange', outputs.setAge);
+    inputs.on('clear', outputs.clear);
 }
 
 document.addEventListener('DOMContentLoaded', main);
