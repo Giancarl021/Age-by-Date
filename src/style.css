@@ -25,10 +25,16 @@ body {
     height: 100vh;
     height: 100svh;
     background-color: var(--clr-bg-dark);
+    color: var(--clr-text-muted);
 }
 
 header {
     padding: 20px;
     background-color: var(--clr-bg);
     color: var(--clr-text);
+}
+
+.hidden {
+    opacity: 0;
+    pointer-events: none;
 }

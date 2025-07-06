@@ -26,11 +26,9 @@ interface Context {
         elements: Record<string, ValidationError>;
         general: boolean;
     };
-    hasValidationError(): boolean;
-    getValidationErrorMessages(): string[];
 }
 
-export default function View() {
+export default function Inputs() {
     const $ = {
         input: {
             date: document.querySelector('input#date') as HTMLInputElement,
@@ -74,18 +72,6 @@ export default function View() {
                 }
             },
             general: false
-        },
-        hasValidationError() {
-            if (this.validationErrors.general) return true;
-
-            for (const element of Object.values(this.validationErrors.elements))
-                if (element.greaterThanMaximum || element.lessThanMininum)
-                    return true;
-
-            return false;
-        },
-        getValidationErrorMessages() {
-            return [];
         }
     };
 
@@ -95,6 +81,49 @@ export default function View() {
             $.input.month.value ?? '',
             $.input.year.value ?? ''
         ];
+    }
+
+    function _hasValidationError(): boolean {
+        if (context.validationErrors.general) return true;
+
+        for (const element of Object.values(context.validationErrors.elements))
+            if (element.greaterThanMaximum || element.lessThanMininum)
+                return true;
+
+        return false;
+    }
+
+    function _getValidationErrorMessages(): string[] {
+        const messages: string[] = [];
+        if (context.validationErrors.general) {
+            messages.push('A data informada não está válida');
+        }
+
+        for (const elementId in context.validationErrors.elements) {
+            const element = document.getElementById(
+                elementId
+            ) as HTMLInputElement;
+
+            const displayName =
+                element.getAttribute('data-display-name') ?? elementId;
+
+            const validationErrors =
+                context.validationErrors.elements[elementId];
+
+            if (validationErrors.lessThanMininum) {
+                messages.push(
+                    `O campo ${displayName} está abaixo do valor mínimo (${element.min})`
+                );
+            }
+
+            if (validationErrors.greaterThanMaximum) {
+                messages.push(
+                    `O campo ${displayName} está acima do valor máximo (${element.max})`
+                );
+            }
+        }
+
+        return messages;
     }
 
     function _onChange(
@@ -118,7 +147,7 @@ export default function View() {
 
         function onInput(this: HTMLInputElement, event: Event) {
             const value = this.value;
-            const valueAsNumber = this.valueAsNumber;
+            const valueAsNumber = Number(this.value);
             const _event = event as InputEvent;
 
             if (_event.data && /\D/.test(_event.data)) {
@@ -199,13 +228,16 @@ export default function View() {
         if (date) {
             context.callbacks.inputChange.forEach(cb => cb(date));
             $.info.validationErrors.classList.add('hidden');
-        } else if (context.hasValidationError()) {
-            const messages = context.getValidationErrorMessages();
+        } else if (_hasValidationError()) {
+            const messages = _getValidationErrorMessages();
 
             const htmlParts: string[] = [];
 
             for (const message of messages) {
-                htmlParts.push(`<li>${message}</li>`);
+                const element = document.createElement('li');
+                element.textContent = message;
+
+                htmlParts.push(element.outerHTML);
             }
 
             $.info.validationErrors.innerHTML = htmlParts.join('');
@@ -294,6 +326,8 @@ export default function View() {
         }
 
         _focus();
+
+        $.info.validationErrors.classList.add('hidden');
 
         context.callbacks.clear.forEach(cb => cb());
     }
